@@ -1,0 +1,8 @@
+pywin32==305
+psutil
+python-xlib
+pydantic
+aiosqlite
+pydantic-settings
+PyQt6
+qasync
