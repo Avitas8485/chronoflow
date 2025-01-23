@@ -9,8 +9,8 @@ class HeatmapWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.heatmap_data: Optional[ActivityHeatmap] = None
-        self.cell_size = 25
-        self.padding = 8
+        self.cell_size = 20
+        self.padding = 5
         self.hour_labels = [f"{h:02d}:00" for h in range(24)]
         self.weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         self.setMouseTracking(True)
@@ -81,7 +81,7 @@ class HeatmapWidget(QWidget):
             painter.save()
             painter.translate(rect.center())
             painter.rotate(-45)  # Rotate text
-            painter.drawText(QRect(-50, -10, 100, 20), Qt.AlignmentFlag.AlignCenter, label)
+            #painter.drawText(QRect(-50, -10, 100, 20), Qt.AlignmentFlag.AlignCenter, label)
             painter.restore()
             
         # Draw weekday labels
