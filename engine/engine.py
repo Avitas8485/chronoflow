@@ -6,7 +6,8 @@ import time
 import logging
 import signal
 
-from models.activity import ActivityCategory, ActivityHeatmap, TimeLog, ActivityMetrics, ActivityData
+from models.activity import ActivityCategory, ActivityContext, ActivityHeatmap, ActivityPattern, TimeLog, ActivityMetrics, ActivityData, Interval
+from models.analytics import CategoryDistribution, FocusSession, ProductivityTrend, WorkPatterns
 from tracker.activity_tracker import BaseActivityTracker
 from classifier.classifier import ActivityClassifier
 from storage.sqlite_storage import SQLiteActivityStorage
@@ -28,11 +29,10 @@ class Engine:
         self.session = ActivitySession()
         self.is_running = False
 
-    def log_activity(self, time_log: TimeLog) -> None:
+    def log_activity(self, time_log: TimeLog, context: ActivityContext) -> None:
         if time_log.end_time <= time_log.start_time:
             raise ValueError("End time must be after start time")
-        logging.info(f"Logging activity: {time_log}")
-        self.storage.add_activity(time_log)
+        self.storage.add_activity(time_log, context)
         
     def get_activity_heatmap(self, start_date: datetime, end_date: datetime, 
                             category: Optional[ActivityCategory] = None) -> ActivityHeatmap:
@@ -42,6 +42,11 @@ class Engine:
                            category: Optional[ActivityCategory] = None) -> ActivityMetrics:
         return self.storage.get_metrics(start_date, end_date, category)
 
+    def get_current_context(self) -> ActivityContext:
+        return self.session.get_current_context()
+    
+    def get_activity_contexts(self, start_date: datetime, end_date: datetime, category: Optional[ActivityCategory] = None) -> List[ActivityContext]:
+        return self.storage.get_activity_contexts(start_date, end_date, category)
     def _get_peak_hours(self, logs: List[TimeLog]) -> List[int]:
         hours = [0] * 24
         for log in logs:
@@ -53,6 +58,22 @@ class Engine:
     def detect_flow_states(self, minimum_duration: timedelta=timedelta(hours=2), 
                           category: Optional[ActivityCategory]=None) -> List[TimeLog]:
         return self.storage.get_flow_states(minimum_duration, category)
+    
+    def get_productivity_trends(self, start_date: datetime, end_date: datetime, interval: Interval) -> List[ProductivityTrend]:
+        """Calculate productivity trends for a date range with a specific interval"""
+        return self.storage.get_productivity_trends(start_date, end_date, interval)
+    
+    def get_category_distribution(self, start_date: datetime, end_date: datetime) -> CategoryDistribution:
+        """Calculate category distribution metrics for a date range"""
+        return self.storage.get_category_distribution(start_date, end_date)
+    
+    def get_work_patterns(self, days: int=30) -> WorkPatterns:
+        """Calculate work patterns and peak productivity hours"""
+        return self.storage.get_work_patterns(days)
+    
+    def get_focus_sessions(self, threshold: float=0.6, duration_minutes: int=30) -> List[FocusSession]:
+        """Retrieve focus sessions based on the threshold and minimum duration"""
+        return self.storage.get_focus_sessions(threshold, duration_minutes)
 
     def start(self):
         logging.info("Starting activity engine")
@@ -120,13 +141,12 @@ class Engine:
                         category=category
                     )
                     
-                    logging.debug(f"Current activity: {app_name} - {window_title}")
                     
                     # Update session and get time log if activity should be logged
                     time_log = self.session.update(activity)
+                    context = self.get_current_context()
                     
                     if time_log:
-                        logging.info(f"New activity detected: {time_log.description}")
                         try:
                             if time_log.end_time <= time_log.start_time:
                                 logging.error("Invalid time log: end time before start time")
@@ -136,14 +156,12 @@ class Engine:
                                 logging.error("Invalid time log: duration too short")
                                 continue
                                 
-                            self.log_activity(time_log)
-                            logging.info(f"Activity logged successfully: {time_log.description}")
+                            self.log_activity(time_log, context)
                         except Exception as log_error:
                             logging.error(f"Failed to log activity: {log_error}")
                     
                     time.sleep(self.sampling_interval)
-                    logging.info("Activity tracking loop")
-                    print("Activity tracking loop")
+                    
                     
                 except Exception as e:
                     logging.error(f"Error in activity tracking loop: {e}")
@@ -188,7 +206,8 @@ class Engine:
         while not self.activity_buffer.empty():
             try:
                 time_log = self.activity_buffer.get_nowait()
-                self.log_activity(time_log)
+                context = self.get_current_context()
+                self.log_activity(time_log, context)
             except Empty:
                 break
             except Exception as e:
@@ -197,3 +216,48 @@ class Engine:
     def get_status(self) -> bool:
         """Returns True if engine is running"""
         return self.is_running
+
+    def get_productivity_scores(self, start_time: datetime, end_time: datetime) -> List[tuple[datetime, float]]:
+        """Get productivity scores for a time range.
+        
+        Args:
+            start_time: Start time of range to get scores for
+            end_time: End time of range to get scores for
+            
+        Returns:
+            List of (timestamp, score) tuples
+        """
+        scores = []
+        
+        # Query activity contexts in time range
+        contexts = self.storage.get_activity_contexts(start_time, end_time)
+        
+        if not contexts:
+            return [(start_time, 0.0), (end_time, 0.0)]
+            
+        # Group scores by 5 minute intervals to smooth graph
+        interval = timedelta(minutes=5)
+        current_time = start_time
+        
+        while current_time <= end_time:
+            # Find contexts that overlap with current interval
+            interval_contexts = [
+                c for c in contexts
+                if any(a.timestamp >= current_time and a.timestamp < current_time + interval 
+                    for a in c.last_activities)
+            ]
+            
+            if interval_contexts:
+                # Average productivity scores for this interval
+                avg_score = sum(c.productivity_score for c in interval_contexts) / len(interval_contexts)
+                scores.append((current_time, avg_score))
+            else:
+                # No data for this interval, interpolate from last known score
+                if scores:
+                    scores.append((current_time, scores[-1][1]))
+                else:
+                    scores.append((current_time, 0.0))
+                    
+            current_time += interval
+            
+        return scores
