@@ -1,4 +1,6 @@
 import logging
+import os
+import sys
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QTabWidget, QSystemTrayIcon, QMenu,)
 from PyQt6.QtCore import pyqtSlot
@@ -15,6 +17,16 @@ from gui.rules_tab import RulesTab
 from gui.privacy_tab import PrivacyTab
 from gui.models import UIConstants
 from gui.analytics_tab import AnalyticsTab
+
+def get_resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = getattr(sys, '_MEIPASS', os.path.dirname(__file__))
+    except Exception:
+        base_path = os.path.dirname(__file__)
+    
+    return os.path.join(base_path, relative_path)
 
 class ChronoFlowGUI(QMainWindow):
     def __init__(self):
@@ -57,7 +69,9 @@ class ChronoFlowGUI(QMainWindow):
             return False
         
     def _init_core_components(self):
-        self.setWindowIcon(QIcon("./icons/logo.png"))
+        # Replace direct path with resource path
+        icon_path = get_resource_path("icons/logo.ico")
+        self.setWindowIcon(QIcon(icon_path))
         self.setWindowTitle("ChronoFlow")
         if sys.platform == "win32":
             import ctypes
@@ -102,7 +116,9 @@ class ChronoFlowGUI(QMainWindow):
         
     def _setup_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(QIcon("./icons/logo.png"))
+        # Replace direct path with resource path
+        icon_path = get_resource_path("icons/logo.ico")
+        self.tray_icon.setIcon(QIcon(icon_path))
         
         # Create tray menu
         tray_menu = QMenu()
