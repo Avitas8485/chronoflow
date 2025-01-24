@@ -1,125 +1,96 @@
-from PyQt6.QtWidgets import QWidget, QToolTip, QSizePolicy
-from PyQt6.QtCore import Qt, QSize, QRect
-from PyQt6.QtGui import QPainter, QColor, QPen, QBrush, QFont
-from datetime import datetime, date, timedelta
-from models.activity import ActivityHeatmap, ActivityCategory
-from typing import Dict, Optional, Tuple
+from PyQt6.QtWidgets import (QWidget, QGridLayout, QLabel, 
+                           QGraphicsOpacityEffect, QToolTip)
+from PyQt6.QtCore import Qt, QRect
+from PyQt6.QtGui import QPainter, QColor, QPen, QCursor
+from models.activity import ActivityHeatmap
+from datetime import datetime, date
+import colorsys
 
-class HeatmapWidget(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.heatmap_data: Optional[ActivityHeatmap] = None
-        self.cell_size = 20
-        self.padding = 5
-        self.hour_labels = [f"{h:02d}:00" for h in range(24)]
-        self.weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+class HeatmapCell(QWidget):
+    def __init__(self, value: float = 0.0, max_value: float = 1.0):
+        super().__init__()
+        self.value = value
+        self.max_value = max_value
+        self.setMinimumSize(30, 30)
         self.setMouseTracking(True)
         
-        # Add size policy
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        
-        # Color scheme (using HSL for better gradients)
-        self.min_color = QColor(220, 220, 220)  # Light gray
-        self.max_color = QColor(46, 204, 113)   # Green
-        self.background_color = QColor(248, 248, 248)
-        self.grid_color = QColor(230, 230, 230)
-        
-        # Font settings
-        self.label_font = QFont("Segoe UI", 8)
-        
-    def set_data(self, heatmap: ActivityHeatmap):
-        self.heatmap_data = heatmap
-        # Force layout update
-        self.updateGeometry()
-        self.update()
-        
-    def sizeHint(self) -> QSize:
-        label_width = 30  # Width for day labels
-        width = label_width + len(self.hour_labels) * (self.cell_size + self.padding) + self.padding
-        height = len(self.heatmap_data.data) * (self.cell_size + self.padding) + 40 if self.heatmap_data else 100
-        return QSize(width, height)
-        
-    def minimumSizeHint(self) -> QSize:
-        # Ensure minimum size is reasonable
-        return QSize(800, 400)
-        
-    def _get_cell_color(self, value: float) -> QColor:
-        """Calculate cell color using linear interpolation"""
-        if value == 0:
-            return self.min_color
-            
-        # Normalize value between 0 and 1
-        intensity = min(value / 3600, 1.0)  # Max intensity at 1 hour
-        
-        # Linear interpolation between colors
-        return QColor(
-            int(self.min_color.red() + (self.max_color.red() - self.min_color.red()) * intensity),
-            int(self.min_color.green() + (self.max_color.green() - self.min_color.green()) * intensity),
-            int(self.min_color.blue() + (self.max_color.blue() - self.min_color.blue()) * intensity)
-        )
-        
-    def _get_cell_rect(self, row: int, col: int) -> QRect:
-        """Get rectangle for cell at given row and column"""
-        label_width = 30
-        x = label_width + col * (self.cell_size + self.padding) + self.padding
-        y = row * (self.cell_size + self.padding) + 40  # Extra space for hour labels
-        return QRect(x, y, self.cell_size, self.cell_size)
-        
     def paintEvent(self, a0):
-        if not self.heatmap_data:
-            return            
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Set font
-        painter.setFont(self.label_font)
-        
-        # Draw hour labels
-        for i, label in enumerate(self.hour_labels):
-            rect = self._get_cell_rect(0, i)
-            rect.setY(10)  # Move labels up
-            painter.save()
-            painter.translate(rect.center())
-            painter.rotate(-45)  # Rotate text
-            #painter.drawText(QRect(-50, -10, 100, 20), Qt.AlignmentFlag.AlignCenter, label)
-            painter.restore()
-            
-        # Draw weekday labels
-        for row, (day, _) in enumerate(self.heatmap_data.data.items()):
-            weekday = day.strftime("%a")
-            rect = QRect(5, self._get_cell_rect(row, 0).y(), 25, self.cell_size)
-            painter.drawText(rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, weekday)
-            
-        # Draw heatmap cells
-        for row, (day, daily_data) in enumerate(self.heatmap_data.data.items()):
-            for col, value in enumerate(daily_data.hours):
-                rect = self._get_cell_rect(row, col)
-                
-                # Draw cell with rounded corners
-                path = painter.drawRoundedRect(rect, 4, 4)
-                color = self._get_cell_color(value)
-                painter.fillRect(rect, color)
-                
-                # Draw subtle border
-                painter.setPen(QPen(self.grid_color, 1))
-                painter.drawRoundedRect(rect, 4, 4)
-                
-    def mouseMoveEvent(self, a0):
-        if not self.heatmap_data:
-            return
-            
-        # Calculate cell position from mouse coordinates
-        if a0 is not None:
-            col = (a0.pos().x() - self.padding) // (self.cell_size + self.padding)
-            row = (a0.pos().y() - self.padding) // (self.cell_size + self.padding) - 1
+        # Calculate color based on value
+        if self.max_value > 0:
+            intensity = min(self.value / self.max_value, 1.0)
         else:
-            return
+            intensity = 0.0
+            
+        # Create color gradient from white to dark blue
+        r = int(255 * (1 - intensity))  # Decrease red from 255 to 0
+        g = int(255 * (1 - intensity))  # Decrease green from 255 to 0
+        b = int(255 - (intensity * 100))  # Keep more blue, decrease less
         
-        if 0 <= col < 24 and row >= 0:
-            days = list(self.heatmap_data.data.keys())
-            if row < len(days):
-                day = days[row]
-                hours = self.heatmap_data.data[day].hours
-                duration_mins = hours[col] / 60
-                tooltip = f"{day}\n{self.hour_labels[col]}\nActivity: {duration_mins:.1f} minutes"
-                QToolTip.showText(a0.globalPosition().toPoint(), tooltip)
+        color = QColor(r, g, b)
+        
+        # Draw rounded rectangle
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(Qt.PenStyle.NoPen))
+        painter.setBrush(color)
+        rect = self.rect().adjusted(2, 2, -2, -2)  # Add padding
+        painter.drawRoundedRect(rect, 5, 5)
+        
+    def enterEvent(self, event):
+        hours = self.value
+        if hours > 0:
+            tooltip = f"{hours:.1f} hours"
+            QToolTip.showText(QCursor.pos(), tooltip, self)
+
+class HeatmapWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self._setup_ui()
+        
+    def _setup_ui(self):
+        self.grid_layout = QGridLayout(self)
+        self.grid_layout.setSpacing(2)
+        
+        # Add hour labels (columns)
+        for hour in range(24):
+            label = QLabel(f"{hour:02d}")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.grid_layout.addWidget(label, 0, hour + 1)
+            
+        # Add weekday labels (rows)
+        self.weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        for i, day in enumerate(self.weekdays):
+            label = QLabel(day)
+            label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.grid_layout.addWidget(label, i + 1, 0)
+            
+        # Initialize empty heatmap cells
+        self.cells = {}
+        for row in range(7):
+            for col in range(24):
+                cell = HeatmapCell()
+                self.cells[(row, col)] = cell
+                self.grid_layout.addWidget(cell, row + 1, col + 1)
+                
+    def set_data(self, heatmap: ActivityHeatmap):
+        if not heatmap or not heatmap.data:
+            return
+            
+        # Find maximum value for scaling
+        max_value = 0.0
+        for daily_data in heatmap.data.values():
+            max_value = max(max_value, max(daily_data.hours))
+            
+        # Reset all cells
+        for cell in self.cells.values():
+            cell.value = 0.0
+            cell.max_value = max_value
+            
+        # Update cells with data
+        for dt, daily_data in heatmap.data.items():
+            weekday = dt.weekday()  # 0 = Monday
+            for hour, value in enumerate(daily_data.hours):
+                if (weekday, hour) in self.cells:
+                    self.cells[(weekday, hour)].value = value
+                    self.cells[(weekday, hour)].update()

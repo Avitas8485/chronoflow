@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QHBoxLayout, 
                            QLabel, QPushButton, QCalendarWidget, QComboBox,
-                           QScrollArea)
+                           QScrollArea, QFrame)
 from PyQt6.QtCore import pyqtSlot, QDate, Qt, pyqtSignal, QTimer
 from datetime import datetime, timedelta, date
 from gui.heatmap_widget import HeatmapWidget
@@ -43,85 +43,99 @@ class DashboardTab(QWidget):
         main_layout.setContentsMargins(UIConstants.MARGIN * 2, UIConstants.MARGIN * 2,
                                      UIConstants.MARGIN * 2, UIConstants.MARGIN * 2)
 
-        # Top Section: Controls and Current Activity
-        top_section = QGroupBox("Activity Tracking")
+        # Top Section
         top_layout = QVBoxLayout()
+        top_layout.setSpacing(UIConstants.SPACING * 2)
         
         # Controls Row
         controls_layout = QHBoxLayout()
         controls = self._create_controls_group()
-        controls.setFixedHeight(70)
         controls_layout.addWidget(controls)
         controls_layout.addStretch()
         
-        # Current Activity Row
+        # Activity Row 
         activity_layout = QHBoxLayout()
         current_activity = self._create_activity_group()
-        current_activity.setMinimumHeight(100)
         self.metrics = MetricsComponent(self.engine)
-        self.metrics.setMinimumHeight(150)
         
-        activity_layout.addWidget(current_activity, stretch=4)
-        activity_layout.addWidget(self.metrics, stretch=6)
+        activity_layout.addWidget(current_activity, stretch=5)
+        activity_layout.setSpacing(UIConstants.SPACING * 2)
+        activity_layout.addWidget(self.metrics, stretch=7)
+        
+        # Add divider line
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setStyleSheet("background-color: #e0e0e0;")
         
         top_layout.addLayout(controls_layout)
         top_layout.addLayout(activity_layout)
-        top_section.setLayout(top_layout)
 
-        # Create Heatmap Section
-        heatmap_section = QGroupBox("Activity Analysis")
+        # Heatmap Section
         heatmap_layout = QVBoxLayout()
+        heatmap_layout.setSpacing(UIConstants.SPACING * 2)
         
-        # Analysis Controls Row
+        # Analysis Controls
         analysis_layout = QHBoxLayout()
         filter_group = self._create_filter_group()
         week_nav = self._create_week_nav_group()
         analysis_layout.addWidget(filter_group)
+        analysis_layout.setSpacing(UIConstants.SPACING * 2)
         analysis_layout.addWidget(week_nav)
         analysis_layout.addStretch()
         
         # Heatmap Widget
         self.heatmap = HeatmapWidget()
-        self.heatmap.setMinimumHeight(300)
+        self.heatmap.setMinimumHeight(350)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setWidget(self.heatmap)
+        scroll.setStyleSheet("""
+            QScrollArea {
+                background: transparent;
+                border: none;
+            }
+            QScrollArea > QWidget > QWidget {
+                background: transparent;
+            }
+        """)
         
         heatmap_layout.addLayout(analysis_layout)
         heatmap_layout.addWidget(scroll)
-        heatmap_section.setLayout(heatmap_layout)
 
         # Add all sections to main layout
-        main_layout.addWidget(top_section)
-        main_layout.addWidget(heatmap_section, stretch=1)
+        main_layout.addLayout(top_layout)
+        main_layout.addWidget(divider)
+        main_layout.addLayout(heatmap_layout, stretch=1)
 
     def _create_activity_group(self):
-        group = QGroupBox("Current Activity")
+        container = QWidget()
         layout = QVBoxLayout()
         layout.setSpacing(UIConstants.SPACING)
-        layout.setContentsMargins(UIConstants.MARGIN * 2, UIConstants.MARGIN * 2,
-                                UIConstants.MARGIN * 2, UIConstants.MARGIN * 2)
+        layout.setContentsMargins(UIConstants.MARGIN, UIConstants.MARGIN,
+                                UIConstants.MARGIN, UIConstants.MARGIN)
         
-        # Larger font for current activity
+        header = QLabel("Current Activity")
+        header.setStyleSheet("font-size: 11pt; font-weight: bold; color: #666;")
+        
         self.current_activity_label = QLabel("None")
         self.current_activity_label.setStyleSheet("font-size: 12pt; font-weight: bold;")
         self.current_category_label = QLabel("Category: None")
         self.current_category_label.setStyleSheet("font-size: 10pt;")
         
+        layout.addWidget(header)
         layout.addWidget(self.current_activity_label)
         layout.addWidget(self.current_category_label)
         layout.addStretch()
-        group.setLayout(layout)
-        return group
+        container.setLayout(layout)
+        return container
     
     def _create_controls_group(self):
-        group = QGroupBox("Tracking Controls")
+        container = QWidget()
         layout = QHBoxLayout()
         layout.setSpacing(UIConstants.SPACING * 2)
+        layout.setContentsMargins(UIConstants.MARGIN, UIConstants.MARGIN,
+                                UIConstants.MARGIN, UIConstants.MARGIN)
         
-        # Equal width buttons
         button_width = 120
         self.start_button = QPushButton("Start Tracking")
         self.stop_button = QPushButton("Stop Tracking")
@@ -131,75 +145,54 @@ class DashboardTab(QWidget):
         layout.addWidget(self.start_button)
         layout.addWidget(self.stop_button)
         layout.addStretch()
-        group.setLayout(layout)
-        return group
-    
-    def _create_heatmap_group(self):
-        group = QGroupBox("Activity Heatmap")
-        layout = QVBoxLayout()
-        layout.setContentsMargins(UIConstants.MARGIN, UIConstants.MARGIN, 
-                                UIConstants.MARGIN, UIConstants.MARGIN)
-        
-        # Create scroll area with proper sizing
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        
-        self.heatmap = HeatmapWidget()
-        self.heatmap.setMinimumHeight(300) # Ensure minimum height
-        scroll.setWidget(self.heatmap)
-        
-        layout.addWidget(scroll)
-        group.setLayout(layout)
-        return group
+        container.setLayout(layout)
+        return container
         
     def _create_filter_group(self):
-        group = QGroupBox("Category Filter")
-        layout = QVBoxLayout()
-        layout.setContentsMargins(UIConstants.MARGIN, UIConstants.MARGIN // 2,
-                                UIConstants.MARGIN, UIConstants.MARGIN // 2)
+        container = QWidget()
+        layout = QHBoxLayout()
+        layout.setContentsMargins(UIConstants.MARGIN, UIConstants.MARGIN,
+                                UIConstants.MARGIN, UIConstants.MARGIN)
+        
+        label = QLabel("Category:")
+        label.setStyleSheet("font-weight: bold; color: #666;")
         
         self.category_filter = QComboBox()
         self.category_filter.addItems([cat.value for cat in ActivityCategory])
         self.category_filter.currentIndexChanged.connect(self._update_heatmap)
+        self.category_filter.setFixedWidth(150)
         
+        layout.addWidget(label)
         layout.addWidget(self.category_filter)
-        group.setLayout(layout)
-        group.setMaximumWidth(200)
-        group.setFixedHeight(80)  # Set fixed height
-        return group
+        layout.addStretch()
+        container.setLayout(layout)
+        return container
 
     def _create_week_nav_group(self):
-        group = QGroupBox("Week Selection") 
-        layout = QVBoxLayout()
-        layout.setContentsMargins(UIConstants.MARGIN, UIConstants.MARGIN // 2,
-                                UIConstants.MARGIN, UIConstants.MARGIN // 2)
-        layout.setSpacing(UIConstants.SPACING // 2)  # Reduce spacing
+        container = QWidget()
+        layout = QHBoxLayout()
+        layout.setContentsMargins(UIConstants.MARGIN, UIConstants.MARGIN,
+                                UIConstants.MARGIN, UIConstants.MARGIN)
         
-        self.week_label = QLabel()
-        self.week_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        nav_layout = QHBoxLayout()
         self.prev_week_btn = QPushButton("← Previous")
         self.next_week_btn = QPushButton("Next →")
+        self.week_label = QLabel()
+        self.week_label.setStyleSheet("font-weight: bold;")
+        self.week_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         self.prev_week_btn.clicked.connect(self._previous_week)
         self.next_week_btn.clicked.connect(self._next_week)
         
-        nav_layout.addWidget(self.prev_week_btn)
-        nav_layout.addWidget(self.next_week_btn)
-        
+        layout.addWidget(self.prev_week_btn)
         layout.addWidget(self.week_label)
-        layout.addLayout(nav_layout)
+        layout.addWidget(self.next_week_btn)
+        layout.addStretch()
         
         self.selected_week_start = self._get_week_start(date.today())
         self._update_week_label()
         
-        group.setLayout(layout)
-        group.setMaximumWidth(300)
-        group.setFixedHeight(80)  # Set fixed height
-        return group
+        container.setLayout(layout)
+        return container
 
     def _get_week_start(self, for_date: date) -> date:
         """Get the Monday of the week containing the given date"""
