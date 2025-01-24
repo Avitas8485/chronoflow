@@ -1,8 +1,8 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QFrame, QPushButton, QComboBox)
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from datetime import datetime, timedelta
-from models.activity import ActivityMetrics, ActivityCategory
+from models.activity import ActivityMetrics, ActivityCategory, ActivityContext
 from engine.engine import Engine
 from models.time_range import TimeRange
 
@@ -29,6 +29,39 @@ class MetricCard(QFrame):
     def set_title(self, title: str):
         self.title_label.setText(title)
 
+class CurrentActivityCard(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Raised)
+        
+        layout = QVBoxLayout(self)
+        
+        self.title_label = QLabel("Current Activity")
+        self.title_label.setStyleSheet("font-weight: bold; color: #666;")
+        
+        self.app_label = QLabel("--")
+        self.category_label = QLabel("--")
+        self.pattern_label = QLabel("--")
+        self.focus_label = QLabel("Focus: --")
+        
+        for label in [self.app_label, self.category_label, self.pattern_label, self.focus_label]:
+            label.setStyleSheet("font-size: 14px;")
+            layout.addWidget(label)
+            
+        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        
+    def update_context(self, context: ActivityContext):
+        if context.last_activities:
+            latest = context.last_activities[-1]
+            self.app_label.setText(f"App: {latest.application}")
+            self.category_label.setText(f"Category: {latest.category.value if latest.category else 'Unknown'}")
+        
+        if context.activity_patterns:
+            latest_pattern = context.activity_patterns[-1]
+            self.pattern_label.setText(f"Pattern: {latest_pattern.value}")
+        
+        self.focus_label.setText(f"Focus Score: {context.focus_score:.1f}")
+
 class MetricsComponent(QWidget):
     refresh_requested = pyqtSignal()
     
@@ -38,8 +71,17 @@ class MetricsComponent(QWidget):
         self.selected_range = TimeRange.TODAY
         self._setup_ui()
         
+        # Add auto-refresh timer
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.timeout.connect(self.update_current_activity)
+        self.refresh_timer.start(5000)  # Update every 5 seconds
+        
     def _setup_ui(self):
         layout = QVBoxLayout(self)
+        
+        # Current activity section
+        self.current_activity = CurrentActivityCard()
+        layout.addWidget(self.current_activity)
         
         # Add range selector
         range_layout = QHBoxLayout()
@@ -96,6 +138,11 @@ class MetricsComponent(QWidget):
     def refresh_metrics(self):
         self.update_metrics()
         self.refresh_requested.emit()
+        
+    def update_current_activity(self):
+        if self.engine.get_status():
+            context = self.engine.get_current_context()
+            self.current_activity.update_context(context)
         
     @staticmethod
     def _format_duration(duration: timedelta) -> str:
