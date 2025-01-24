@@ -2,6 +2,7 @@ import logging
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                             QTabWidget, QSystemTrayIcon, QMenu,)
 from PyQt6.QtCore import pyqtSlot
+from PyQt6 import QtCore
 from PyQt6.QtGui import QIcon, QAction, QCloseEvent
 from typing import Optional
 import sys
@@ -56,7 +57,17 @@ class ChronoFlowGUI(QMainWindow):
             return False
         
     def _init_core_components(self):
-        self.tracker = WindowsActivityTracker()
+        self.setWindowIcon(QIcon("./icons/logo.png"))
+        self.setWindowTitle("ChronoFlow")
+        if sys.platform == "win32":
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("ChronoFlow")
+            self.tracker = WindowsActivityTracker()
+        elif sys.platform == "linux":
+            from tracker.linux_activity_tracker import LinuxActivityTracker
+            self.tracker = LinuxActivityTracker()
+        else:
+            raise NotImplementedError(f"Platform {sys.platform} not supported")
         self.classifier = ActivityClassifier()
         self.storage = SQLiteActivityStorage("activity.db")
         self.engine = Engine(self.tracker, self.classifier, self.storage)
@@ -91,7 +102,7 @@ class ChronoFlowGUI(QMainWindow):
         
     def _setup_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(QIcon("icon.png"))
+        self.tray_icon.setIcon(QIcon("./icons/logo.png"))
         
         # Create tray menu
         tray_menu = QMenu()
@@ -129,7 +140,7 @@ class ChronoFlowGUI(QMainWindow):
             QApplication.quit()
 
     def closeEvent(self, a0: Optional[QCloseEvent]) -> None:
-        if a0 is not None:
+        if self.tray_icon.isVisible() and a0 is not None:
             a0.ignore()
             self.hide()
             self.tray_icon.showMessage(
@@ -138,6 +149,23 @@ class ChronoFlowGUI(QMainWindow):
                 QSystemTrayIcon.MessageIcon.Information,
                 2000
             )
+        else:
+            if a0 is not None:
+                a0.accept()
+            self.quit_application()
+
+    def changeEvent(self, a0):
+        if a0 is not None and a0.type() == QtCore.QEvent.Type.WindowStateChange:
+            if self.isMinimized() and self.tray_icon.isVisible():
+                a0.ignore()
+                self.hide()
+                self.tray_icon.showMessage(
+                    "ChronoFlow",
+                    "Application minimized to tray. Right-click the tray icon to show or exit.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    2000
+                )
+        super().changeEvent(a0)
         
 def main():
     app = QApplication(sys.argv)
