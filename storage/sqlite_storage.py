@@ -176,7 +176,6 @@ class SQLiteActivityStorage(ActivityStorage):
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
-            # Base query parts
             base_where = "WHERE start_time >= ? AND end_time <= ?"
             params = [start_date.isoformat(), end_date.isoformat()]
             
@@ -184,73 +183,65 @@ class SQLiteActivityStorage(ActivityStorage):
                 base_where += " AND category = ?"
                 params.append(category.value)
 
-            # Get total duration and count
+            # Fix duration calculation using proper time units
             cursor.execute(f"""
                 SELECT 
                     COUNT(*) as activity_count,
-                    SUM((julianday(end_time) - julianday(start_time)) * 24 * 60 * 60) as total_seconds
+                    SUM(ROUND((julianday(end_time) - julianday(start_time)) * 24 * 60 * 60)) as total_seconds
                 FROM activities
                 {base_where}
             """, params)
             result = cursor.fetchone()
             
-            activity_count = result['activity_count']
-            total_duration = timedelta(seconds=result['total_seconds'] or 0)
-            
-            # Calculate average duration
-            average_duration = timedelta(seconds=result['total_seconds'] / activity_count) if activity_count > 0 else timedelta(0)
-            
-            # Find peak hours (hours with most activity)
+            # Fix peak hours calculation to consider actual duration within each hour
             cursor.execute(f"""
-                WITH RECURSIVE
-                hours(hour) AS (
-                    SELECT 0 UNION ALL SELECT hour + 1 FROM hours WHERE hour < 23
-                ),
-                hour_durations AS (
+                WITH hour_activity AS (
                     SELECT 
                         CAST(strftime('%H', start_time) AS INTEGER) as hour,
-                        SUM((julianday(
-                            MIN(
-                                end_time, 
-                                time(start_time, '+1 hour', 'start of hour')
-                            )
-                        ) - julianday(start_time)) * 24) as duration
+                        SUM(ROUND((
+                            julianday(MIN(end_time, datetime(start_time, '+1 hour', 'start of hour'))) - 
+                            julianday(start_time)
+                        ) * 24 * 60 * 60)) as duration_seconds
                     FROM activities
                     {base_where}
                     GROUP BY CAST(strftime('%H', start_time) AS INTEGER)
                 )
-                SELECT h.hour
-                FROM hours h
-                LEFT JOIN hour_durations hd ON h.hour = hd.hour
-                ORDER BY COALESCE(hd.duration, 0) DESC
+                SELECT hour, duration_seconds
+                FROM hour_activity
+                ORDER BY duration_seconds DESC
                 LIMIT 3
             """, params)
+            
             peak_hours = [row['hour'] for row in cursor.fetchall()]
             
+            activity_count = result['activity_count']
+            total_duration = timedelta(seconds=int(result['total_seconds'] or 0))
+            
+            # Calculate average duration correctly
+            avg_duration = (total_duration / activity_count) if activity_count > 0 else timedelta(0)
+
             # Get category breakdown
             if category:
-                categories_breakdown = {
-                    category: total_duration
-                }
+                categories_breakdown = {category: total_duration}
             else:
                 cursor.execute(f"""
                     SELECT 
                         category,
-                        SUM((julianday(end_time) - julianday(start_time)) * 24 * 60 * 60) as category_seconds
+                        SUM(ROUND((julianday(end_time) - julianday(start_time)) * 24 * 60 * 60)) as category_seconds
                     FROM activities
                     {base_where}
                     GROUP BY category
                 """, params)
                 
                 categories_breakdown = {
-                    ActivityCategory(row['category']): timedelta(seconds=row['category_seconds'])
+                    ActivityCategory(row['category']): timedelta(seconds=int(row['category_seconds']))
                     for row in cursor.fetchall()
                 }
             
             return ActivityMetrics(
                 total_duration=total_duration,
                 activity_count=activity_count,
-                average_duration=average_duration,
+                average_duration=avg_duration,
                 peak_hours=peak_hours,
                 categories_breakdown=categories_breakdown
             )
