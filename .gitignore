@@ -3,3 +3,7 @@
 /.venv/
 __pycache__/
 activity_rules.json
+*.pyc
+dist/
+build/
+venv/
