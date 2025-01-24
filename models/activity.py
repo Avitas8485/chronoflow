@@ -65,3 +65,35 @@ class DailyHeatmap(BaseModel):
     
 class ActivityHeatmap(BaseModel):
     data: Dict[date, DailyHeatmap] = Field(..., title="Mapping of dates to daily heatmaps")
+    
+
+class ActivityTransition(BaseModel):
+    from_activity: ActivityData
+    to_activity: ActivityData
+    timestamp: datetime
+    duration: timedelta
+    pattern: ActivityPattern
+
+class ActivityContext(BaseModel):
+    last_activities: List[ActivityData] = []
+    category_durations: Dict[ActivityCategory, float] = {}
+    activity_patterns: List[ActivityPattern] = []
+    transition_history: List[ActivityTransition] = []
+    focus_score: float = 0.0
+    productivity_score: float = 0.0  # Add new field
+    
+    def __post_init__(self):
+        self.last_activities = self.last_activities or []
+        self.category_durations = self.category_durations or {}
+        self.activity_patterns = self.activity_patterns or []
+        self.transition_history = self.transition_history or []
+        self.focus_score = 0.0
+        self.productivity_score = 0.0  # Initialize
+        
+        
+class Interval(str, Enum):
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+    YEAR = "year"
+
