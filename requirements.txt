@@ -6,3 +6,5 @@ aiosqlite
 pydantic-settings
 PyQt6
 qasync
+PyQt6-Charts
+pyinstaller
