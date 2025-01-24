@@ -1,34 +1,10 @@
 from collections import deque
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
-from enum import unique
+from datetime import datetime, timedelta
 from typing import Dict, Optional, List
-from models.activity import ActivityData, ActivityCategory, ActivityPattern, TimeLog
+from pydantic import BaseModel
+from models.activity import ActivityData, ActivityCategory, ActivityPattern, TimeLog, ActivityTransition, ActivityContext
 
 
-@dataclass
-class ActivityTransition:
-    from_activity: 'ActivityData'
-    to_activity: 'ActivityData'
-    timestamp: datetime
-    duration: timedelta
-    pattern: ActivityPattern
-
-
-@dataclass
-class ActivityContext:
-    last_activities: List[ActivityData] = field(default_factory=list)
-    category_durations: Dict[ActivityCategory, float] = field(default_factory=dict)
-    activity_patterns: List[ActivityPattern] = field(default_factory=list)
-    transition_history: List[ActivityTransition] = field(default_factory=list)
-    focus_score: float = 0.0
-    
-    
-    def __post_init__(self):
-        self.last_activities = self.last_activities or []
-        self.category_durations = self.category_durations or {}
-        self.activity_patterns = self.activity_patterns or []
-        self.transition_history = self.transition_history or []
 
 class ActivitySession:
     def __init__(self, 
@@ -391,3 +367,59 @@ class ActivitySession:
         
         # Calculate and update focus score
         self.context.focus_score = self._calculate_focus_score()
+        self.context.productivity_score = self._get_productivity_score(now, self.context)
+        
+    def get_current_context(self) -> ActivityContext:
+        return self.context
+    
+    def _get_productivity_score(self, timestamp: datetime, context: ActivityContext) -> float:
+        """Calculate productivity score based on activity context"""
+        if not context.last_activities:
+            return 0.0
+            
+        category_weights = {
+            ActivityCategory.WORK: 1.0,
+            ActivityCategory.STUDY: 1.0,
+            ActivityCategory.HOBBY: 0.6,
+            ActivityCategory.HEALTH: 0.7,
+            ActivityCategory.EXERCISE: 0.7,
+            ActivityCategory.SOCIAL: 0.3,
+            ActivityCategory.RELAX: 0.2,
+            ActivityCategory.IDLE: 0.0,
+            ActivityCategory.OTHER: 0.4
+        }
+        current_activity = context.last_activities[-1]
+        category = current_activity.category or ActivityCategory.OTHER
+        base_score = category_weights.get(category, 0.4) * 100.0
+        
+        # Apply focus score impact (0.5-1.5x multiplier)
+        focus_multiplier = 0.5 + context.focus_score
+        score = base_score * focus_multiplier
+        
+        # Time of day impact (-20% to +20%)
+        hour = timestamp.hour
+        if 9 <= hour <= 11 or 14 <= hour <= 16:  # Peak productivity hours
+            score *= 1.2
+        elif 0 <= hour <= 5 or 22 <= hour <= 23:  # Low productivity hours
+            score *= 0.8
+            
+        # Activity pattern impact
+        if context.activity_patterns:
+            pattern = context.activity_patterns[-1]
+            pattern_multipliers = {
+                ActivityPattern.FOCUSED: 1.2,
+                ActivityPattern.MULTITASKING: 0.9,
+                ActivityPattern.DISTRACTED: 0.6,
+                ActivityPattern.TRANSITIONING: 0.8,
+                ActivityPattern.IDLE: 0.3
+            }
+            score *= pattern_multipliers.get(pattern, 1.0)
+            
+        # Idle time penalty
+        if current_activity.idle_time > 0:
+            idle_penalty = min(current_activity.idle_time / 300.0, 1.0)  # Max 5 min impact
+            score *= (1 - idle_penalty)
+            
+        # Ensure score is between 0-100
+        return max(0.0, min(100.0, score))
+            
