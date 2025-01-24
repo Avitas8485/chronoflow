@@ -9,6 +9,7 @@ from gui.models import UIConstants
 from engine.engine import Engine
 from models.activity import ActivityCategory
 import logging
+from gui.productivity_graph import ProductivityGraph
 
 
 
@@ -38,74 +39,67 @@ class DashboardTab(QWidget):
             self.stop_button.setEnabled(False)
         
     def _setup_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(UIConstants.SPACING * 2)
-        main_layout.setContentsMargins(UIConstants.MARGIN * 2, UIConstants.MARGIN * 2,
-                                     UIConstants.MARGIN * 2, UIConstants.MARGIN * 2)
+        main_layout = QHBoxLayout(self)  # Change to horizontal layout
+        main_layout.setSpacing(UIConstants.SPACING)
+        main_layout.setContentsMargins(UIConstants.MARGIN, UIConstants.MARGIN,
+                                     UIConstants.MARGIN, UIConstants.MARGIN)
 
-        # Top Section
-        top_layout = QVBoxLayout()
-        top_layout.setSpacing(UIConstants.SPACING * 2)
+        # Left column
+        left_column = QVBoxLayout()
         
-        # Controls Row
-        controls_layout = QHBoxLayout()
+        # Top controls bar
         controls = self._create_controls_group()
-        controls_layout.addWidget(controls)
-        controls_layout.addStretch()
+        controls.setMaximumHeight(60)
+        left_column.addWidget(controls)
         
-        # Activity Row 
-        activity_layout = QHBoxLayout()
-        current_activity = self._create_activity_group()
+        # Info panel combining activity and metrics
+        info_panel = QGroupBox("Current Status")
+        info_layout = QVBoxLayout()
+        
+        # Current activity section
+        activity_widget = self._create_activity_group()
+        info_layout.addWidget(activity_widget)
+        
+        # Metrics section
         self.metrics = MetricsComponent(self.engine)
+        info_layout.addWidget(self.metrics)
         
-        activity_layout.addWidget(current_activity, stretch=5)
-        activity_layout.setSpacing(UIConstants.SPACING * 2)
-        activity_layout.addWidget(self.metrics, stretch=7)
+        info_panel.setLayout(info_layout)
+        left_column.addWidget(info_panel)
         
-        # Add divider line
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setStyleSheet("background-color: #e0e0e0;")
+        # Productivity graph
+        self.productivity_graph = ProductivityGraph(self.engine)
+        self.productivity_graph.setMinimumHeight(200)
+        left_column.addWidget(self.productivity_graph)
         
-        top_layout.addLayout(controls_layout)
-        top_layout.addLayout(activity_layout)
-
-        # Heatmap Section
+        # Right column - Heatmap
+        right_column = QVBoxLayout()
+        
+        heatmap_box = QGroupBox("Activity Heatmap")
         heatmap_layout = QVBoxLayout()
-        heatmap_layout.setSpacing(UIConstants.SPACING * 2)
         
-        # Analysis Controls
-        analysis_layout = QHBoxLayout()
-        filter_group = self._create_filter_group()
-        week_nav = self._create_week_nav_group()
-        analysis_layout.addWidget(filter_group)
-        analysis_layout.setSpacing(UIConstants.SPACING * 2)
-        analysis_layout.addWidget(week_nav)
-        analysis_layout.addStretch()
+        # Compact controls
+        filter_controls = QHBoxLayout()
+        filter_controls.addWidget(self._create_filter_group())
+        filter_controls.addWidget(self._create_week_nav_group())
         
-        # Heatmap Widget
         self.heatmap = HeatmapWidget()
-        self.heatmap.setMinimumHeight(350)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(self.heatmap)
-        scroll.setStyleSheet("""
-            QScrollArea {
-                background: transparent;
-                border: none;
-            }
-            QScrollArea > QWidget > QWidget {
-                background: transparent;
-            }
-        """)
+        self.heatmap.setMinimumHeight(400)
         
-        heatmap_layout.addLayout(analysis_layout)
-        heatmap_layout.addWidget(scroll)
-
-        # Add all sections to main layout
-        main_layout.addLayout(top_layout)
-        main_layout.addWidget(divider)
-        main_layout.addLayout(heatmap_layout, stretch=1)
+        heatmap_layout.addLayout(filter_controls)
+        heatmap_layout.addWidget(self.heatmap)
+        heatmap_box.setLayout(heatmap_layout)
+        
+        right_column.addWidget(heatmap_box)
+        
+        # Add columns to main layout
+        left_container = QWidget()
+        left_container.setLayout(left_column)
+        right_container = QWidget()
+        right_container.setLayout(right_column)
+        
+        main_layout.addWidget(left_container, stretch=4)
+        main_layout.addWidget(right_container, stretch=6)
 
     def _create_activity_group(self):
         container = QWidget()
@@ -158,6 +152,8 @@ class DashboardTab(QWidget):
         label.setStyleSheet("font-weight: bold; color: #666;")
         
         self.category_filter = QComboBox()
+        # Add "All Categories" as first option
+        self.category_filter.addItem("All Categories")
         self.category_filter.addItems([cat.value for cat in ActivityCategory])
         self.category_filter.currentIndexChanged.connect(self._update_heatmap)
         self.category_filter.setFixedWidth(150)
@@ -227,6 +223,8 @@ class DashboardTab(QWidget):
             self.current_category_label.setText(
                 f"Category: {activity.category.value if activity.category else 'Uncategorized'}"
             )
+        if self.productivity_graph:
+            self.productivity_graph.update_data()
         
     @pyqtSlot()
     def start_tracking(self):
@@ -262,7 +260,9 @@ class DashboardTab(QWidget):
             return
             
         try:
-            selected_category = ActivityCategory(self.category_filter.currentText())
+            # Handle "All Categories" selection
+            selected_text = self.category_filter.currentText()
+            selected_category = None if selected_text == "All Categories" else ActivityCategory(selected_text)
             
             # Get heatmap data for selected week
             start_date = datetime.combine(self.selected_week_start, datetime.min.time())
