@@ -13,6 +13,7 @@ from gui.dashboard_tab import DashboardTab
 from gui.rules_tab import RulesTab
 from gui.privacy_tab import PrivacyTab
 from gui.models import UIConstants
+from gui.analytics_tab import AnalyticsTab
 
 class ChronoFlowGUI(QMainWindow):
     def __init__(self):
@@ -83,6 +84,10 @@ class ChronoFlowGUI(QMainWindow):
         # Privacy tab
         privacy_widget = PrivacyTab(self.engine)
         tabs.addTab(privacy_widget, "Privacy")
+        
+        # Analytics tab
+        analytics_widget = AnalyticsTab(self.engine)
+        tabs.addTab(analytics_widget, "Analytics")
         
     def _setup_tray(self):
         self.tray_icon = QSystemTrayIcon(self)
