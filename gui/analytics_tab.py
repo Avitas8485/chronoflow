@@ -1,10 +1,11 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                             QComboBox, QFrame)
-from PyQt6.QtCharts import QChart, QChartView, QPieSeries, QLineSeries
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPainter
+from PyQt6.QtCharts import QChart, QChartView, QPieSeries, QLineSeries, QDateTimeAxis, QValueAxis, QBarSeries, QBarSet
+from PyQt6.QtCore import Qt, QDateTime, QTime
+from PyQt6.QtGui import QPainter, QColor, QPen
 from datetime import datetime, timedelta
 from typing import List
+import math
 
 from engine.engine import Engine
 from models.activity import Interval
@@ -61,11 +62,30 @@ class AnalyticsTab(QWidget):
     def _create_productivity_chart(self) -> QChartView:
         chart = QChart()
         chart.setTitle("Productivity Trend")
-        legend = chart.legend()
-        if legend:
-            legend.hide()
+        
+        # Create and style series
         series = QLineSeries()
+        pen = QPen(QColor("#2196F3"))
+        pen.setWidth(3)
+        series.setPen(pen)
+        
+        # Create axes
+        date_axis = QDateTimeAxis()
+        date_axis.setFormat("MMM dd")
+        date_axis.setTitleText("Date")
+        
+        value_axis = QValueAxis()
+        value_axis.setRange(0, 1)
+        value_axis.setTitleText("Productivity Score")
+        value_axis.setLabelFormat("%.1f")
+        value_axis.setGridLineVisible(True)
+        
         chart.addSeries(series)
+        chart.addAxis(date_axis, Qt.AlignmentFlag.AlignBottom)
+        chart.addAxis(value_axis, Qt.AlignmentFlag.AlignLeft)
+        series.attachAxis(date_axis)
+        series.attachAxis(value_axis)
+        
         view = QChartView(chart)
         view.setRenderHint(QPainter.RenderHint.Antialiasing)
         return view
@@ -73,8 +93,20 @@ class AnalyticsTab(QWidget):
     def _create_category_chart(self) -> QChartView:
         chart = QChart()
         chart.setTitle("Category Distribution")
+        
         series = QPieSeries()
+        series.setLabelsVisible(True)
+        
+        # Custom colors for categories
+        colors = ["#2196F3", "#4CAF50", "#FFC107", "#9C27B0", "#F44336"]
+        
         chart.addSeries(series)
+        chart.setTheme(QChart.ChartTheme.ChartThemeLight)  # This ensures legend is created
+        legend = chart.legend()
+        if legend is not None:
+            legend.setVisible(True)
+            legend.setAlignment(Qt.AlignmentFlag.AlignRight)
+        
         view = QChartView(chart)
         view.setRenderHint(QPainter.RenderHint.Antialiasing)
         return view
@@ -169,8 +201,14 @@ class AnalyticsTab(QWidget):
 
     def _update_category_chart(self, distribution: CategoryDistribution):
         series = QPieSeries()
-        for category, metrics in distribution.categories.items():
-            series.append(category.value, metrics.total_hours)
+        total_hours = sum(m.total_hours for m in distribution.categories.values())
+        
+        for i, (category, metrics) in enumerate(distribution.categories.items()):
+            percentage = (metrics.total_hours / total_hours * 100) if total_hours > 0 else 0
+            label = f"{category.value}\n{percentage:.1f}%"
+            slice = series.append(label, metrics.total_hours)
+            if slice is not None:
+                slice.setLabelVisible(True)
         
         chart = self.category_chart.chart()
         if not chart:
@@ -191,14 +229,38 @@ class AnalyticsTab(QWidget):
         chart.createDefaultAxes()
 
     def _update_peak_hours_chart(self, patterns: WorkPatterns):
-        series = QLineSeries()
-        for hour in patterns.peak_productivity_hours:
-            hour_val = int(hour.hour.split(":")[0])
-            series.append(hour_val, hour.productivity)
-        
         chart = self.peak_hours_chart.chart()
         if not chart:
             return
+        
+        series = QLineSeries()
+        pen = QPen(QColor("#4CAF50"))
+        pen.setWidth(3)
+        series.setPen(pen)
+        
+        # Create 24-hour data points
+        hour_data = {int(h.hour.split(":")[0]): h.productivity for h in patterns.peak_productivity_hours}
+        for hour in range(24):
+            series.append(hour, hour_data.get(hour, 0))
+        
         chart.removeAllSeries()
         chart.addSeries(series)
-        chart.createDefaultAxes()
+        
+        # Configure axes
+        x_axis = QValueAxis()
+        x_axis.setRange(0, 23)
+        x_axis.setLabelFormat("%d:00")
+        x_axis.setTickCount(12)
+        x_axis.setGridLineVisible(True)
+        x_axis.setTitleText("Hour of Day")
+        
+        y_axis = QValueAxis()
+        y_axis.setRange(0, 1)
+        y_axis.setTitleText("Productivity Score")
+        y_axis.setLabelFormat("%.1f")
+        y_axis.setGridLineVisible(True)
+        
+        chart.addAxis(x_axis, Qt.AlignmentFlag.AlignBottom)
+        chart.addAxis(y_axis, Qt.AlignmentFlag.AlignLeft)
+        series.attachAxis(x_axis)
+        series.attachAxis(y_axis)
