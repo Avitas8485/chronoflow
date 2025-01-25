@@ -2,7 +2,9 @@
 
 REM Clean previous build
 echo Cleaning previous build...
-if exist "dist" rmdir /s /q "dist"
+if exist "dist\\ChronoFlow.exe" del "dist\\ChronoFlow.exe"
+if exist "dist\\chronoflow.log" del "dist\\chronoflow.log"
+echo Deleted previous executable and log files
 if exist "build" rmdir /s /q "build"
 
 REM Create virtual environment if it doesn't exist
