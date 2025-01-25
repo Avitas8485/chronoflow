@@ -4,7 +4,6 @@ a = Analysis(
     binaries=[],
     datas=[
         ('icons/*.ico', 'icons'),  # Changed from .png to .ico
-        ('icons/*.png', 'icons'),  # Keep png support as well
     ],
     hiddenimports=['PyQt6.sip'],
     hookspath=[],
