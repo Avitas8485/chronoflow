@@ -28,15 +28,6 @@ def get_resource_path(relative_path):
     
     return os.path.join(base_path, relative_path)
 
-def get_appdata_path():
-    """Get path to appdata folder"""
-    if sys.platform == "win32":
-        return os.path.join(os.getenv('APPDATA'), "ChronoFlow")
-    elif sys.platform == "linux":
-        return os.path.join(os.getenv('HOME'), ".chronoflow")
-    else:
-        raise NotImplementedError(f"Platform {sys.platform} not supported")
-    
 
 class ChronoFlowGUI(QMainWindow):
     def __init__(self):
@@ -45,7 +36,7 @@ class ChronoFlowGUI(QMainWindow):
             level=logging.INFO,
             format='%(asctime)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler(os.path.join(get_appdata_path(), "chronoflow.log")),
+                logging.FileHandler('./chronoflow.log'),
                 logging.StreamHandler()
             ]
         )
@@ -93,7 +84,7 @@ class ChronoFlowGUI(QMainWindow):
         else:
             raise NotImplementedError(f"Platform {sys.platform} not supported")
         self.classifier = ActivityClassifier()
-        self.storage = SQLiteActivityStorage(os.path.join(get_appdata_path(), "chronoflow.db"))
+        self.storage = SQLiteActivityStorage('./activity.db')
         self.engine = Engine(self.tracker, self.classifier, self.storage)
         self.engine.start()
         
